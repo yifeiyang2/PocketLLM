@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    networks:
+      - pocketllm
+
+  # Python Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHON_ENV=production
+      - MODEL_PATH=/models/tinyllama-1.1b-chat-q4.gguf
+    volumes:
+      - ./models:/models:ro
+    networks:
+      - pocketllm
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 16G
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - pocketllm
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+networks:
+  pocketllm:
+    driver: bridge
