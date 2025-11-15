@@ -26,6 +26,9 @@ from routers.admin_router import router as admin_router
 # Import dependencies module to set global instances
 import utils.dependencies as deps
 
+# Import database initialization
+from database import init_db
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,6 +39,11 @@ async def lifespan(app: FastAPI):
     print("=" * 60)
     print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     print("=" * 60)
+
+    # Initialize database
+    print("Initializing database...")
+    init_db()
+    print(" Database initialized (SQLite)")
 
     # Initialize services
     print("Initializing services...")

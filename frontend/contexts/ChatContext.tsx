@@ -50,8 +50,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setIsLoading(true)
 
     try {
-      // Call Next.js API Route (BFF pattern)
-      const response = await fetch('/api/chat', {
+      // Create placeholder for assistant message
+      const assistantMessageId = `msg-${Date.now()}`
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+
+      // Call streaming endpoint
+      const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -67,33 +78,76 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         throw new Error('Failed to send message')
       }
 
-      const data = await response.json()
+      // Read streaming response
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
 
-      // Add assistant response
-      const assistantMessage: Message = {
-        id: data.message_id,
-        role: 'assistant',
-        content: data.response,
-        timestamp: new Date(data.timestamp),
+      if (!reader) {
+        throw new Error('No response body')
       }
 
-      setMessages((prev) => [...prev, assistantMessage])
+      let buffer = ''
+      let fullContent = ''
 
-      // Update session ID if new
-      if (data.session_id && !sessionId) {
-        setSessionId(data.session_id)
+      while (true) {
+        const { done, value } = await reader.read()
+
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Process complete SSE messages
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6))
+
+            if (data.type === 'start') {
+              // Update session ID
+              if (data.session_id && !sessionId) {
+                setSessionId(data.session_id)
+              }
+            } else if (data.type === 'token') {
+              // Append token to message
+              fullContent += data.content
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: fullContent }
+                    : msg
+                )
+              )
+            } else if (data.type === 'done') {
+              // Stream complete
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, timestamp: new Date(data.timestamp) }
+                    : msg
+                )
+              )
+            } else if (data.type === 'error') {
+              throw new Error(data.message)
+            }
+          }
+        }
       }
     } catch (error) {
       console.error('Send message error:', error)
 
-      // Add error message
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, errorMessage])
+      // Update last message with error
+      setMessages((prev) => {
+        const lastMessage = prev[prev.length - 1]
+        if (lastMessage && lastMessage.role === 'assistant' && !lastMessage.content) {
+          return prev.slice(0, -1).concat({
+            ...lastMessage,
+            content: 'Sorry, I encountered an error. Please try again.',
+          })
+        }
+        return prev
+      })
     } finally {
       setIsLoading(false)
     }

@@ -3,8 +3,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from schemas.auth import User, TokenPayload, LoginResponse
+from schemas.auth import User as UserSchema, TokenPayload, LoginResponse
 from config import settings
+from database import get_db, SessionLocal
+from database.models import User as UserModel
 import uuid
 
 
@@ -14,26 +16,35 @@ class AuthService:
     def __init__(self):
         """Initialize authentication service."""
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        # In-memory user store (replace with database in production)
-        self.users: dict[str, User] = {}
         self._initialize_default_users()
 
     def _initialize_default_users(self):
-        """Create default users for development."""
-        # Default regular user
-        self.users["user1"] = User(
-            user_id=str(uuid.uuid4()),
-            username="user1",
-            password_hash=self.get_password_hash("password123"),
-            is_admin=False
-        )
-        # Default admin user
-        self.users["admin"] = User(
-            user_id=str(uuid.uuid4()),
-            username="admin",
-            password_hash=self.get_password_hash("admin123"),
-            is_admin=True
-        )
+        """Create default users for development if they don't exist."""
+        db = SessionLocal()
+        try:
+            # Check if users already exist
+            if db.query(UserModel).count() == 0:
+                # Create default regular user
+                user1 = UserModel(
+                    user_id=str(uuid.uuid4()),
+                    username="user1",
+                    password_hash=self.get_password_hash("password123"),
+                    is_admin=False
+                )
+                db.add(user1)
+
+                # Create default admin user
+                admin = UserModel(
+                    user_id=str(uuid.uuid4()),
+                    username="admin",
+                    password_hash=self.get_password_hash("admin123"),
+                    is_admin=True
+                )
+                db.add(admin)
+
+                db.commit()
+        finally:
+            db.close()
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash."""
@@ -43,16 +54,27 @@ class AuthService:
         """Generate password hash."""
         return self.pwd_context.hash(password)
 
-    def authenticate_user(self, username: str, password: str) -> Optional[User]:
+    def authenticate_user(self, username: str, password: str) -> Optional[UserSchema]:
         """Authenticate a user by username and password."""
-        user = self.users.get(username)
-        if not user:
-            return None
-        if not self.verify_password(password, user.password_hash):
-            return None
-        return user
+        db = SessionLocal()
+        try:
+            user_model = db.query(UserModel).filter(UserModel.username == username).first()
+            if not user_model:
+                return None
+            if not self.verify_password(password, user_model.password_hash):
+                return None
 
-    def create_access_token(self, user: User) -> str:
+            # Convert to schema
+            return UserSchema(
+                user_id=user_model.user_id,
+                username=user_model.username,
+                password_hash=user_model.password_hash,
+                is_admin=user_model.is_admin
+            )
+        finally:
+            db.close()
+
+    def create_access_token(self, user: UserSchema) -> str:
         """Create JWT access token for authenticated user."""
         expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         payload = TokenPayload(
@@ -96,9 +118,20 @@ class AuthService:
             is_admin=user.is_admin
         )
 
-    def get_user_by_id(self, user_id: str) -> Optional[User]:
+    def get_user_by_id(self, user_id: str) -> Optional[UserSchema]:
         """Get user by user_id."""
-        for user in self.users.values():
-            if user.user_id == user_id:
-                return user
-        return None
+        db = SessionLocal()
+        try:
+            user_model = db.query(UserModel).filter(UserModel.user_id == user_id).first()
+            if not user_model:
+                return None
+
+            # Convert to schema
+            return UserSchema(
+                user_id=user_model.user_id,
+                username=user_model.username,
+                password_hash=user_model.password_hash,
+                is_admin=user_model.is_admin
+            )
+        finally:
+            db.close()

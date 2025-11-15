@@ -1,5 +1,6 @@
 """Chat API router."""
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from typing import Annotated, List
 from schemas.chat import ChatRequest, ChatResponse, ChatHistory
 from schemas.auth import TokenPayload
@@ -7,6 +8,7 @@ from utils.dependencies import get_current_user
 import utils.dependencies as deps
 from datetime import datetime
 import uuid
+import json
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -157,3 +159,107 @@ async def delete_session(
         )
 
     return {"message": "Session deleted successfully"}
+
+
+@router.post("/stream")
+async def send_message_stream(
+    request: ChatRequest,
+    current_user: Annotated[TokenPayload, Depends(get_current_user)]
+):
+    """
+    Send a chat message and get streaming LLM response.
+
+    Returns Server-Sent Events (SSE) stream with incremental response.
+    """
+    deps.monitoring_service.increment_request_count()
+
+    # Create or get session
+    session_id = request.session_id
+    if not session_id:
+        session_id = deps.session_service.create_session(current_user.sub)
+    else:
+        # Verify session exists and belongs to user
+        session = deps.session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        if session.user_id != current_user.sub:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this session"
+            )
+
+    # Add user message to session
+    deps.session_service.add_message(
+        session_id=session_id,
+        user_id=current_user.sub,
+        role="user",
+        content=request.prompt,
+        tokens_used=None
+    )
+
+    # Get conversation history
+    session = deps.session_service.get_session(session_id)
+    conversation_history = session.messages if session else []
+
+    # Build formatted prompt
+    formatted_prompt = "<|system|>\nYou are a helpful AI assistant. Please provide clear, accurate, and concise responses.</s>\n"
+
+    for msg in conversation_history[:-1]:
+        if msg.role == "user":
+            formatted_prompt += f"<|user|>\n{msg.content}</s>\n"
+        elif msg.role == "assistant":
+            formatted_prompt += f"<|assistant|>\n{msg.content}</s>\n"
+
+    formatted_prompt += f"<|user|>\n{request.prompt}</s>\n<|assistant|>\n"
+
+    # Stream generator function
+    async def generate_stream():
+        """Generate Server-Sent Events stream."""
+        full_response = ""
+        message_id = str(uuid.uuid4())
+
+        # Send initial event with session_id and message_id
+        yield f"data: {json.dumps({'type': 'start', 'session_id': session_id, 'message_id': message_id})}\n\n"
+
+        # Stream LLM response
+        try:
+            token_stream = deps.inference_service.stream_infer(
+                prompt=formatted_prompt,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature
+            )
+
+            for token in token_stream:
+                if token:
+                    full_response += token
+                    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+
+        except Exception as e:
+            error_msg = f"Error generating response: {str(e)}"
+            yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+            return
+
+        # Add assistant message to session
+        tokens_used = len(full_response.split())
+        deps.session_service.add_message(
+            session_id=session_id,
+            user_id=current_user.sub,
+            role="assistant",
+            content=full_response,
+            tokens_used=tokens_used
+        )
+
+        # Send completion event
+        yield f"data: {json.dumps({'type': 'done', 'tokens_used': tokens_used, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
