@@ -13,6 +13,7 @@ python-multipart==0.0.6
 
 # Database and caching
 redis==5.0.1
+sqlalchemy==2.0.23
 
 # LLM inference
 llama-cpp-python==0.2.20

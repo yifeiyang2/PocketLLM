@@ -59,7 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       if (!response.ok) {
-        return false
+        const error = await response.json()
+        throw new Error(error.detail || 'Login failed')
       }
 
       const data = await response.json()
@@ -82,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return true
     } catch (error) {
       console.error('Login error:', error)
-      return false
+      throw error
     }
   }
 

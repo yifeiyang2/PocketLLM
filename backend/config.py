@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
+    # Database
+    DATABASE_URL: str = "sqlite:///./pocketllm.db"
+
     # Redis
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
