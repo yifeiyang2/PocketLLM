@@ -19,7 +19,7 @@ async def get_metrics(
     deps.monitoring_service.increment_request_count()
 
     cache_stats = deps.cache_manager.get_stats()
-    active_sessions = len(deps.session_service.sessions)
+    active_sessions = deps.session_service.get_total_sessions_count()
 
     return deps.monitoring_service.get_system_metrics(cache_stats, active_sessions)
 
@@ -82,6 +82,6 @@ async def get_session_count(
     """
     deps.monitoring_service.increment_request_count()
     return {
-        "total_sessions": len(deps.session_service.sessions),
-        "total_users": len(deps.session_service.user_sessions)
+        "total_sessions": deps.session_service.get_total_sessions_count(),
+        "total_users": deps.session_service.get_total_users_count()
     }
