@@ -1,11 +1,11 @@
 /**
  * Admin Metrics API Route (BFF Layer)
  *
- * Proxies system metrics requests to the FastAPI backend (admin only).
+ * Proxies metrics requests to the FastAPI backend (admin only).
  */
 import { NextRequest, NextResponse } from 'next/server'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const BACKEND_URL = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export async function GET(request: NextRequest) {
   try {

@@ -9,45 +9,75 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - BACKEND_API_URL=http://backend:8000
       - NODE_ENV=production
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - pocketllm
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1.5G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
-  # Python Backend
+  # Python Backend (FastAPI + LLM)
   backend:
     build:
-      context: ./backend
-      dockerfile: ../docker/Dockerfile.backend
+      context: .
+      dockerfile: docker/Dockerfile.backend
     ports:
       - "8000:8000"
     environment:
       - PYTHON_ENV=production
-      - MODEL_PATH=/models/tinyllama-1.1b-chat-q4.gguf
+      - MODEL_PATH=/app/models/tinyllama-1.1b-chat-q4.gguf
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_URL=sqlite:///./data/pocketllm.db
     volumes:
-      - ./models:/models:ro
+      - backend-data:/app/data
+    depends_on:
+      redis:
+        condition: service_started
     networks:
       - pocketllm
+    restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 16G
+          cpus: '2.5'
+          memory: 14G
+        reservations:
+          cpus: '1.5'
+          memory: 4G
 
   # Redis for caching
   redis:
     image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     networks:
       - pocketllm
+    restart: unless-stopped
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+volumes:
+  backend-data:
+    driver: local
 
 networks:
   pocketllm:

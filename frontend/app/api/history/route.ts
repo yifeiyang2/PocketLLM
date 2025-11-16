@@ -1,11 +1,11 @@
 /**
  * History API Route (BFF Layer)
  *
- * Proxies chat history requests to the FastAPI backend.
+ * Proxies conversation history requests to the FastAPI backend.
  */
 import { NextRequest, NextResponse } from 'next/server'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const BACKEND_URL = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export async function GET(request: NextRequest) {
   try {

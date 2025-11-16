@@ -6,7 +6,9 @@
  */
 import { NextRequest } from 'next/server'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// Use BACKEND_API_URL for server-side calls (Docker internal networking)
+// Falls back to NEXT_PUBLIC_API_URL for local development
+const BACKEND_URL = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export async function POST(request: NextRequest) {
   try {
