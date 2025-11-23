@@ -1,10 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from typing import Annotated, List
 from schemas.chat import ChatRequest, ChatResponse, ChatHistory
 from schemas.auth import TokenPayload
 from utils.dependencies import get_current_user
-from utils.prompt_builder import build_prompt, trim_conversation, get_system_prompt, build_cache_key
+from utils.prompt_builder import (
+    build_prompt,
+    trim_conversation,
+    load_system_prompt,
+    build_cache_key
+)
 import utils.dependencies as deps
 from datetime import datetime
 import uuid
@@ -46,8 +51,10 @@ async def send_message(
     conversation_history = session.messages if session else []
     conversation_history = trim_conversation(conversation_history[:-1])
 
+    # Load system prompt from prompt.txt
+    system_prompt = load_system_prompt("prompt.txt")
+
     # Build formatted prompt
-    system_prompt = get_system_prompt("default")
     formatted_prompt = build_prompt(conversation_history, system_prompt, request.prompt)
 
     # Run LLM inference
@@ -140,7 +147,10 @@ async def send_message_stream(
     conversation_history = session.messages if session else []
     conversation_history = trim_conversation(conversation_history[:-1])
 
-    system_prompt = get_system_prompt("default")
+    # Load system prompt from prompt.txt
+    system_prompt = load_system_prompt("prompt.txt")
+
+    # Build formatted prompt
     formatted_prompt = build_prompt(conversation_history, system_prompt, request.prompt)
 
     async def generate_stream():
@@ -150,8 +160,19 @@ async def send_message_stream(
 
         yield f"data: {json.dumps({'type': 'start', 'session_id': session_id, 'message_id': message_id})}\n\n"
 
-        cache_key = build_cache_key(current_user.sub, session_id, request.prompt)
-        cached_response = deps.cache_manager.get(cache_key, max_tokens=request.max_tokens, temperature=request.temperature)
+        # ✅ FIXED: add prev_response=None
+        cache_key = build_cache_key(
+            current_user.sub,
+            session_id,
+            request.prompt,
+            prev_response=None
+        )
+
+        cached_response = deps.cache_manager.get(
+            cache_key,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature
+        )
 
         if cached_response:
             cached = True
@@ -175,7 +196,12 @@ async def send_message_stream(
                         await asyncio.sleep(0)
 
                 if full_response:
-                    deps.cache_manager.set(cache_key, full_response, max_tokens=request.max_tokens, temperature=request.temperature)
+                    deps.cache_manager.set(
+                        cache_key,
+                        full_response,
+                        max_tokens=request.max_tokens,
+                        temperature=request.temperature
+                    )
 
             except Exception as e:
                 yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

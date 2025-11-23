@@ -39,6 +39,12 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_URL=sqlite:///./data/pocketllm.db
+      - MODEL_N_THREADS=6      
+      - MODEL_N_CTX=2048
+      - MODEL_MAX_TOKENS=512
+      - MODEL_N_GPU_LAYERS=0
+      - MODEL_TEMPERATURE=0.2
+      - MODEL_TOP_P=0.9
     volumes:
       - backend-data:/app/data
     depends_on:

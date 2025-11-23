@@ -38,12 +38,12 @@ class Settings(BaseSettings):
 
     # LLM Model
     MODEL_PATH: str = "./models/model.gguf"
-    MODEL_N_CTX: int = 4096
-    MODEL_N_THREADS: int = 4
+    MODEL_N_CTX: int = 2048
+    MODEL_N_THREADS: int = 8
     MODEL_N_GPU_LAYERS: int = 0  # GPU layers (0 = CPU only)
-    MODEL_TEMPERATURE: float = 0.7
-    MODEL_TOP_P: float = 0.95
-    MODEL_MAX_TOKENS: int = 1024
+    MODEL_TEMPERATURE: float = 0.2
+    MODEL_TOP_P: float = 0.9
+    MODEL_MAX_TOKENS: int = 512
 
     # Cache settings
     CACHE_TTL_SECONDS: int = 3600  # 1 hour
