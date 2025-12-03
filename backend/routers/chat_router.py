@@ -6,8 +6,7 @@ from schemas.auth import TokenPayload
 from utils.dependencies import get_current_user
 from utils.prompt_builder import (
     build_prompt,
-    load_system_prompt,
-    build_cache_key
+    load_system_prompt
 )
 import utils.dependencies as deps
 from datetime import datetime
@@ -52,11 +51,13 @@ async def send_message(
     system_prompt = load_system_prompt("prompt.txt")
     formatted_prompt = build_prompt(conversation_history, system_prompt, request.prompt)
 
+    # Use plain text (user's original input) as cache key, but send formatted prompt to LLM
     response_text, cached = deps.inference_service.infer(
         prompt=formatted_prompt,
         max_tokens=request.max_tokens,
         temperature=request.temperature,
-        use_cache=True
+        use_cache=True,
+        cache_key=request.prompt  # Cache based on plain text only
     )
 
     tokens_used = len(response_text.split())
@@ -173,12 +174,8 @@ async def send_message_stream(
             print(f"[DEBUG] Starting stream generation for session {session_id}")
             yield f"data: {json.dumps({'type': 'start', 'session_id': session_id, 'message_id': message_id})}\n\n"
 
-            cache_key = build_cache_key(
-                current_user.sub,
-                session_id,
-                formatted_prompt,
-                prev_response=None
-            )
+            # Use plain text (user's original input) as cache key instead of formatted_prompt
+            cache_key = request.prompt
 
             cached_response = deps.cache_manager.get(
                 cache_key,
@@ -214,8 +211,9 @@ async def send_message_stream(
                     print(f"[DEBUG] Generated {token_count} tokens for session {session_id}")
 
                     if full_response:
+                        # Cache using plain text as key
                         deps.cache_manager.set(
-                            cache_key,
+                            cache_key,  # cache_key is already set to request.prompt
                             full_response,
                             max_tokens=request.max_tokens,
                             temperature=request.temperature

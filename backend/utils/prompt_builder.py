@@ -97,9 +97,15 @@ def build_prompt(messages: List, system_prompt: str, new_user_prompt: str, max_c
     return "".join(parts)
 
 def build_cache_key(user_id: str, session_id: str, prompt: str, prev_response: str | None = None) -> str:
+    """
+    Build cache key for LLM responses.
+
+    Note: Cache key is based ONLY on prompt content, not user_id or session_id.
+    This allows different users asking the same question to benefit from cached responses.
+    The user_id and session_id parameters are kept for backward compatibility but not used.
+    """
+    # Cache only based on prompt content, ignore user/session for better cache hit rate
     cache_key = json.dumps({
-        "user_id": user_id,
-        "session_id": session_id,
         "prompt": prompt.strip(),
         "prev_response": prev_response.strip() if prev_response else None
     }, sort_keys=True)

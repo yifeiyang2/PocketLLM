@@ -178,16 +178,32 @@ class ModelInferenceService:
         self.cache_manager = cache_manager
         self.llm_engine = llm_engine
 
-    def infer(self, prompt: str, max_tokens: Optional[int] = None, temperature: Optional[float] = None, use_cache: bool = True) -> tuple[str, bool]:
+    def infer(self, prompt: str, max_tokens: Optional[int] = None, temperature: Optional[float] = None, use_cache: bool = True, cache_key: Optional[str] = None) -> tuple[str, bool]:
+        """
+        Perform inference with optional caching.
+
+        Args:
+            prompt: The actual prompt to send to the LLM (may include history)
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            use_cache: Whether to use caching
+            cache_key: Optional separate cache key (if None, uses prompt as cache key)
+
+        Returns:
+            Tuple of (response text, was_cached)
+        """
+        # Use cache_key if provided, otherwise use prompt as cache key
+        lookup_key = cache_key if cache_key is not None else prompt
+
         if use_cache:
-            cached = self.cache_manager.get(prompt, max_tokens=max_tokens, temperature=temperature)
+            cached = self.cache_manager.get(lookup_key, max_tokens=max_tokens, temperature=temperature)
             if cached:
                 return cached, True
 
         response = self.llm_engine.generate(prompt, max_tokens=max_tokens, temperature=temperature, stream=False)
 
         if use_cache and isinstance(response, str):
-            self.cache_manager.set(prompt, response, max_tokens=max_tokens, temperature=temperature)
+            self.cache_manager.set(lookup_key, response, max_tokens=max_tokens, temperature=temperature)
 
         return response, False
 
