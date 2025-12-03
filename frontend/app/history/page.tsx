@@ -18,7 +18,7 @@ import { useChatContext } from '@/contexts/ChatContext'
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
-  timestamp: string
+  timestamp: string | Date
   tokens_used?: number
 }
 
@@ -28,6 +28,15 @@ interface ChatSession {
   messages: ChatMessage[]
   created_at: string
   updated_at: string
+}
+
+// Parse backend timestamps (typically UTC without timezone) safely as UTC.
+const parseTimestamp = (value?: string | Date): Date | null => {
+  if (!value) return null
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value
+  const normalized = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value}Z`
+  const parsed = new Date(normalized)
+  return isNaN(parsed.getTime()) ? null : parsed
 }
 
 export default function HistoryPage() {
@@ -139,7 +148,7 @@ export default function HistoryPage() {
       id: `restored-${session.session_id}-${index}`,
       role: msg.role,
       content: msg.content,
-      timestamp: new Date(msg.timestamp),
+      timestamp: parseTimestamp(msg.timestamp) || new Date(),
     }))
 
     // Load session into chat context
@@ -280,7 +289,8 @@ export default function HistoryPage() {
                         ? firstUserMessage.content.slice(0, 50) + (firstUserMessage.content.length > 50 ? '...' : '')
                         : 'New Conversation'
 
-                      const timeAgo = new Date(session.updated_at).toLocaleDateString('en-US', {
+                      const updatedAt = parseTimestamp(session.updated_at) || new Date()
+                      const timeAgo = updatedAt.toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         hour: '2-digit',
@@ -356,25 +366,32 @@ export default function HistoryPage() {
                   <div className="space-y-6">
                     {/* Session Header */}
                     <div className="pb-6" style={{ borderBottom: '1px solid #E2E8F0' }}>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h2 className="text-xl font-semibold mb-3" style={{ color: '#1E293B' }}>
-                            {selectedSession.messages.find(msg => msg.role === 'user')?.content.slice(0, 100) || 'Conversation'}
-                          </h2>
-                          <div className="flex flex-wrap gap-4 text-sm" style={{ color: '#64748B' }}>
-                            <span>
-                              Created: {new Date(selectedSession.created_at).toLocaleDateString('en-US', {
-                                month: 'long',
-                                day: 'numeric',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </span>
-                            <span>•</span>
-                            <span>{selectedSession.messages.length} messages</span>
-                          </div>
-                        </div>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h2 className="text-xl font-semibold mb-3" style={{ color: '#1E293B' }}>
+                                {selectedSession.messages.find(msg => msg.role === 'user')?.content.slice(0, 100) || 'Conversation'}
+                              </h2>
+                              <div className="flex flex-wrap gap-4 text-sm" style={{ color: '#64748B' }}>
+                                <span>
+                                  {(() => {
+                                    const created = parseTimestamp(selectedSession.created_at) || new Date()
+                                    return (
+                                      <>
+                                        Created: {created.toLocaleDateString('en-US', {
+                                        month: 'long',
+                                        day: 'numeric',
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                        })}
+                                      </>
+                                    )
+                                  })()}
+                                </span>
+                                <span>•</span>
+                                <span>{selectedSession.messages.length} messages</span>
+                              </div>
+                            </div>
                       </div>
 
                       {/* Action Buttons */}
@@ -437,7 +454,7 @@ export default function HistoryPage() {
                                   {message.role === 'user' ? 'You' : 'Assistant'}
                                 </span>
                                 <span className="text-xs" style={{ color: '#64748B' }}>
-                                  {new Date(message.timestamp).toLocaleTimeString()}
+                                  {(parseTimestamp(message.timestamp) || new Date()).toLocaleTimeString()}
                                 </span>
                               </div>
                               <div

@@ -42,6 +42,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     console.log('[ChatContext] sendMessage called with:', { content, sessionId })
 
+    const safeParseServerTimestamp = (value?: string): Date | null => {
+      if (!value) return null
+
+      // Ensure timezone-aware parsing by appending Z when offset is missing
+      const normalized = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value}Z`
+      const parsed = new Date(normalized)
+      return isNaN(parsed.getTime()) ? null : parsed
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -140,10 +149,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 )
               } else if (data.type === 'done') {
                 console.log('[ChatContext] Stream done:', data)
+                const parsedServerTimestamp = safeParseServerTimestamp(data.timestamp)
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantMessageId
-                      ? { ...msg, timestamp: new Date(data.timestamp) }
+                      ? { ...msg, timestamp: msg.timestamp || parsedServerTimestamp || new Date() }
                       : msg
                   )
                 )
